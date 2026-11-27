@@ -9,6 +9,7 @@ from langchain_text_splitters import (
 )
 
 from agents.config import DATA_DIR
+from agents.vectorstore import get_vector_store
 
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
@@ -94,7 +95,10 @@ def print_summary(chunks: list[Document]) -> None:
 def main() -> None:
     chunks = load_chunks(DATA_DIR)
     print_summary(chunks)
-    print("Sample metadata:", chunks[3].metadata)
+
+    store = get_vector_store()
+    store.add_documents(chunks)
+    print(f"Stored {len(chunks)} chunks in ChromaDB")
 
 
 if __name__ == "__main__":

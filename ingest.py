@@ -1,3 +1,4 @@
+import hashlib
 import re
 from collections import Counter
 from pathlib import Path
@@ -85,6 +86,39 @@ def load_chunks(data_dir: Path) -> list[Document]:
     return chunks
 
 
+def make_chunk_id(chunk: Document, position: int) -> str:
+    digest = hashlib.sha1(chunk.page_content.encode("utf-8")).hexdigest()[:12]
+    source = chunk.metadata["source"]
+    section_ref = chunk.metadata["section_ref"]
+    return f"{source}::{section_ref}::{position}::{digest}"
+
+
+def assign_chunk_ids(chunks: list[Document]) -> list[Document]:
+    positions: dict[tuple[str, str], int] = {}
+    for chunk in chunks:
+        key = (chunk.metadata["source"], chunk.metadata["section_ref"])
+        position = positions.get(key, 0)
+        positions[key] = position + 1
+        chunk.metadata["chunk_id"] = make_chunk_id(chunk, position)
+    return chunks
+
+
+def sync_chunks(store, chunks: list[Document]) -> tuple[int, int, int]:
+    current_ids = {c.metadata["chunk_id"] for c in chunks}
+    existing_ids = set(store.get()["ids"])
+
+    new_chunks = [c for c in chunks if c.metadata["chunk_id"] not in existing_ids]
+    stale_ids = sorted(existing_ids - current_ids)
+
+    if new_chunks:
+        store.add_documents(
+            new_chunks, ids=[c.metadata["chunk_id"] for c in new_chunks]
+        )
+    if stale_ids:
+        store.delete(ids=stale_ids)
+    return len(new_chunks), len(chunks) - len(new_chunks), len(stale_ids)
+
+
 def print_summary(chunks: list[Document]) -> None:
     counts = Counter(c.metadata["source"] for c in chunks)
     for source, count in sorted(counts.items()):
@@ -93,12 +127,12 @@ def print_summary(chunks: list[Document]) -> None:
 
 
 def main() -> None:
-    chunks = load_chunks(DATA_DIR)
+    chunks = assign_chunk_ids(load_chunks(DATA_DIR))
     print_summary(chunks)
 
     store = get_vector_store()
-    store.add_documents(chunks)
-    print(f"Stored {len(chunks)} chunks in ChromaDB")
+    added, unchanged, removed = sync_chunks(store, chunks)
+    print(f"Added: {added} | Unchanged: {unchanged} | Removed: {removed}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+langchain
+langchain-core
+langchain-community
+langchain-ollama
+langchain-chroma
+langchain-text-splitters
+langgraph
+langgraph-checkpoint-sqlite
+chromadb
+pydantic
+python-dotenv

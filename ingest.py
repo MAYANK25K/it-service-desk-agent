@@ -28,7 +28,7 @@ DOC_TYPES = {
     "KB": "knowledge_base",
 }
 
-DOC_ID_PATTERN = re.compile(r"Document ID:\s*([A-Z]+)-(\d+)")
+DOC_ID_PATTERN = re.compile(r"Document ID:\s*(([A-Z]+)(?:-[A-Z]+)*-\d+)")
 SECTION_NUMBER_PATTERN = re.compile(r"^(\d+(?:\.\d+)*)")
 
 
@@ -36,8 +36,8 @@ def read_document_info(text: str) -> tuple[str, str]:
     match = DOC_ID_PATTERN.search(text)
     if not match:
         return "UNKNOWN", "general"
-    prefix, number = match.groups()
-    return f"{prefix}-{number}", DOC_TYPES.get(prefix, "general")
+    doc_id, prefix = match.group(1), match.group(2)
+    return doc_id, DOC_TYPES.get(prefix, "general")
 
 
 def section_reference(metadata: dict) -> str:
@@ -87,7 +87,15 @@ def load_chunks(data_dir: Path) -> list[Document]:
 
 
 def make_chunk_id(chunk: Document, position: int) -> str:
-    digest = hashlib.sha1(chunk.page_content.encode("utf-8")).hexdigest()[:12]
+    fingerprint = "|".join(
+        [
+            chunk.metadata["doc_id"],
+            chunk.metadata["doc_type"],
+            chunk.metadata["section"],
+            chunk.page_content,
+        ]
+    )
+    digest = hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12]
     source = chunk.metadata["source"]
     section_ref = chunk.metadata["section_ref"]
     return f"{source}::{section_ref}::{position}::{digest}"

@@ -13,6 +13,13 @@ This policy sets the response and resolution targets that the IT Service Desk co
 
 ## 3. Response and Resolution Targets
 
+The targets below apply to every ticket, by priority. In plain terms:
+
+- **P1 - Critical tickets:** first response within 15 minutes, resolution within 4 hours, covered 24x7.
+- **P2 - High tickets:** first response within 30 minutes, resolution within 8 hours, covered 24x7.
+- **P3 - Medium tickets:** first response within 4 business hours, resolution within 2 business days, standard hours.
+- **P4 - Low tickets:** first response within 1 business day, resolution within 5 business days, standard hours.
+
 | Priority | First response | Resolution target | Coverage |
 |----------|----------------|-------------------|----------|
 | P1 - Critical | 15 minutes | 4 hours | 24x7 |

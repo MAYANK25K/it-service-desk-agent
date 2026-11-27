@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import re
 from collections import Counter
@@ -28,7 +29,7 @@ DOC_TYPES = {
     "KB": "knowledge_base",
 }
 
-DOC_ID_PATTERN = re.compile(r"Document ID:\s*([A-Z]+)-(\d+)")
+DOC_ID_PATTERN = re.compile(r"Document ID:\s*(([A-Z]+)(?:-[A-Z]+)*-\d+)")
 SECTION_NUMBER_PATTERN = re.compile(r"^(\d+(?:\.\d+)*)")
 
 
@@ -36,8 +37,8 @@ def read_document_info(text: str) -> tuple[str, str]:
     match = DOC_ID_PATTERN.search(text)
     if not match:
         return "UNKNOWN", "general"
-    prefix, number = match.groups()
-    return f"{prefix}-{number}", DOC_TYPES.get(prefix, "general")
+    doc_id, prefix = match.group(1), match.group(2)
+    return doc_id, DOC_TYPES.get(prefix, "general")
 
 
 def section_reference(metadata: dict) -> str:
@@ -73,6 +74,10 @@ def split_markdown_file(path: Path) -> list[Document]:
         chunk.metadata["doc_type"] = doc_type
         chunk.metadata["section"] = chunk.metadata.get("section", "Document header")
         chunk.metadata["section_ref"] = section_reference(chunk.metadata)
+
+        title = chunk.metadata.get("title", path.stem)
+        heading = chunk.metadata.get("subsection") or chunk.metadata["section"]
+        chunk.page_content = f"[{title} | {doc_id} | {heading}]\n{chunk.page_content}"
     return chunks
 
 
@@ -87,7 +92,15 @@ def load_chunks(data_dir: Path) -> list[Document]:
 
 
 def make_chunk_id(chunk: Document, position: int) -> str:
-    digest = hashlib.sha1(chunk.page_content.encode("utf-8")).hexdigest()[:12]
+    fingerprint = "|".join(
+        [
+            chunk.metadata["doc_id"],
+            chunk.metadata["doc_type"],
+            chunk.metadata["section"],
+            chunk.page_content,
+        ]
+    )
+    digest = hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12]
     source = chunk.metadata["source"]
     section_ref = chunk.metadata["section_ref"]
     return f"{source}::{section_ref}::{position}::{digest}"
@@ -126,11 +139,33 @@ def print_summary(chunks: list[Document]) -> None:
     print(f"Total: {len(chunks)} chunks")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Index the knowledge base into ChromaDB."
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Delete all stored chunks and re-embed everything.",
+    )
+    return parser.parse_args()
+
+
+def clear_store(store) -> int:
+    ids = store.get()["ids"]
+    if ids:
+        store.delete(ids=ids)
+    return len(ids)
+
+
 def main() -> None:
+    args = parse_args()
     chunks = assign_chunk_ids(load_chunks(DATA_DIR))
     print_summary(chunks)
 
     store = get_vector_store()
+    if args.rebuild:
+        print(f"Rebuild requested: cleared {clear_store(store)} stored chunks")
     added, unchanged, removed = sync_chunks(store, chunks)
     print(f"Added: {added} | Unchanged: {unchanged} | Removed: {removed}")
 

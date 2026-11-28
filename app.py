@@ -2,14 +2,12 @@ import argparse
 import uuid
 
 from langchain_core.messages import HumanMessage
-from pydantic import ValidationError
 
+from agents.decisions import build_edited_action, describe_error
 from agents.events import stream_events
 from agents.graph import build_graph
 from agents.persistence import list_threads, open_checkpointer
-from agents.tools import ARG_MODELS, assess_impact, validate_action
-
-UPPERCASE_FIELDS = {"priority", "level", "ticket_id"}
+from agents.tools import ARG_MODELS
 
 
 def last_reply(graph, config) -> str:
@@ -26,28 +24,19 @@ def show_proposal(action: dict) -> None:
     print("  -----------------------")
 
 
-def explain(error: Exception) -> str:
-    if isinstance(error, ValidationError):
-        return "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in error.errors())
-    return str(error)
-
-
 def edit_action(action: dict):
-    name = action["tool_name"]
-    new_args = dict(action["args"])
+    changes = {}
     print("  Press Enter to keep the current value.")
-    for field in ARG_MODELS[name].model_fields:
-        current = new_args.get(field)
+    for field in ARG_MODELS[action["tool_name"]].model_fields:
+        current = action["args"].get(field)
         value = input(f"  {field} [{'' if current is None else current}]: ").strip()
         if value:
-            new_args[field] = value.upper() if field in UPPERCASE_FIELDS else value
+            changes[field] = value
     try:
-        validated = validate_action(name, new_args)
+        return build_edited_action(action, changes)
     except ValueError as exc:
-        print(f"  That edit is not valid: {explain(exc)}")
+        print(f"  That edit is not valid: {describe_error(exc)}")
         return None
-    impact = assess_impact(name, validated)
-    return {**action, "args": validated, "risk": impact["risk"], "impact_summary": impact["summary"]}
 
 
 def review(action: dict):

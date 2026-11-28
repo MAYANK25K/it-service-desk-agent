@@ -1,3 +1,4 @@
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,6 +18,7 @@ def create_app(checkpointer=None, graph=None) -> FastAPI:
     async def lifespan(app: FastAPI):
         saver = checkpointer or open_checkpointer()
         app.state.checkpointer = saver
+        app.state.decision_lock = threading.Lock()
         app.state.graph = graph or build_graph(saver)
         yield
 

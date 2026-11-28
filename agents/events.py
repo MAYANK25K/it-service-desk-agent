@@ -1,3 +1,4 @@
+import re
 import time
 
 
@@ -35,6 +36,22 @@ def collect_sources(docs: list[dict]) -> list[dict]:
     return sources
 
 
+CITATION_PATTERN = re.compile(r"\[Source:\s*([^,\]]+?)\s*,\s*Section\s*([^\]\s]+)\s*\]", re.IGNORECASE)
+
+
+def mark_cited(sources: list[dict], text: str) -> list[dict]:
+    """Flag which sources the answer text actually cites, cited ones first."""
+    cited = {
+        (name.strip().lower(), section.strip().rstrip(".").lower())
+        for name, section in CITATION_PATTERN.findall(text)
+    }
+    flagged = [
+        {**s, "cited": (str(s["source"]).lower(), str(s["section_ref"]).lower()) in cited}
+        for s in sources
+    ]
+    return sorted(flagged, key=lambda s: not s["cited"])
+
+
 def stream_events(graph, payload, config):
     """Run the graph and yield plain-dict events: step, token, then one done.
 
@@ -69,10 +86,11 @@ def stream_events(graph, payload, config):
     snapshot = graph.get_state(config)
     messages = snapshot.values.get("messages", [])
     waiting = "tool_executor" in snapshot.next
+    text = str(messages[-1].content) if messages else ""
     yield {
         "type": "done",
-        "text": str(messages[-1].content) if messages else "",
+        "text": text,
         "streamed": streamed,
-        "sources": sources,
+        "sources": mark_cited(sources, text),
         "pending_action": snapshot.values.get("pending_action") if waiting else None,
     }

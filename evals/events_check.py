@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agents import graph as graph_module
-from agents.events import stream_events
+from agents.events import mark_cited, stream_events
 
 REPLY = "Restart the router then retry the VPN login"
 DOCS = [
@@ -70,11 +70,27 @@ def case_pending_action_is_reported():
     return done["pending_action"] == PROPOSAL and done["sources"] == [] and not done["streamed"]
 
 
+def case_cited_flags():
+    sources = [
+        {"source": "vpn_troubleshooting.md", "section_ref": "3"},
+        {"source": "vpn_troubleshooting.md", "section_ref": "4.2"},
+        {"source": "sla_policy.md", "section_ref": "3"},
+    ]
+    text = "Switch network. [Source: vpn_troubleshooting.md, Section 4.2]. Also see [Source: sla_policy.md, Section 3]."
+    flagged = mark_cited(sources, text)
+    uncited = mark_cited(sources, "No citations here.")
+    return (
+        [(s["source"], s["section_ref"], s["cited"]) for s in flagged]
+        == [("vpn_troubleshooting.md", "4.2", True), ("sla_policy.md", "3", True), ("vpn_troubleshooting.md", "3", False)]
+        and not any(s["cited"] for s in uncited)
+    )
+
 CASES = [
     ("Events arrive as step, tokens, then one done", case_event_order),
     ("Tokens rebuild the full answer", case_tokens_rebuild_the_answer),
     ("Sources are de-duplicated", case_sources_are_unique),
     ("A paused action is reported in the done event", case_pending_action_is_reported),
+    ("Sources are flagged as cited, cited first", case_cited_flags),
 ]
 
 

@@ -1,4 +1,5 @@
 import argparse
+import time
 import uuid
 
 from langchain_core.messages import HumanMessage
@@ -67,6 +68,31 @@ def review(action: dict):
             print("  Please type y, e or n.")
 
 
+def describe_step(node: str, changes: dict) -> str:
+    if node == "supervisor":
+        return f"intent = {changes.get('intent', '?')}"
+    if node == "rag_agent":
+        return f"retrieved {len(changes.get('retrieved_docs') or [])} chunks and answered"
+    if node == "direct_responder":
+        return "replied"
+    if node == "action_planner":
+        action = changes.get("pending_action")
+        return f"prepared {action['tool_name']}" if action else "needs more details"
+    if node == "tool_executor":
+        return "finished"
+    return "done"
+
+
+def stream_graph(graph, payload, config) -> None:
+    started = time.perf_counter()
+    for update in graph.stream(payload, config, stream_mode="updates"):
+        for node, changes in update.items():
+            if node.startswith("__") or not isinstance(changes, dict):
+                continue
+            now = time.perf_counter()
+            print(f"  [{node}] {describe_step(node, changes)} ({now - started:.1f}s)")
+            started = now
+
 def resume_with_review(graph, config) -> None:
     snapshot = graph.get_state(config)
     status, action = review(snapshot.values["pending_action"])
@@ -75,7 +101,7 @@ def resume_with_review(graph, config) -> None:
         {"pending_action": action, "approval_status": status},
         as_node="action_planner",
     )
-    graph.invoke(None, config)
+    stream_graph(graph, None, config)
     print(f"\nAgent: {last_reply(graph, config)}")
 
 
@@ -84,8 +110,8 @@ def is_waiting_for_approval(graph, config) -> bool:
 
 
 def run_turn(graph, config, text: str) -> None:
-    result = graph.invoke({"messages": [HumanMessage(content=text)]}, config)
-    print(f"[route: {result.get('intent', '?')}]")
+    print()
+    stream_graph(graph, {"messages": [HumanMessage(content=text)]}, config)
     print(f"\nAgent: {last_reply(graph, config)}")
     if is_waiting_for_approval(graph, config):
         resume_with_review(graph, config)

@@ -1,10 +1,10 @@
 import argparse
-import time
 import uuid
 
 from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
 
+from agents.events import stream_events
 from agents.graph import build_graph
 from agents.persistence import list_threads, open_checkpointer
 from agents.tools import ARG_MODELS, assess_impact, validate_action
@@ -68,50 +68,25 @@ def review(action: dict):
             print("  Please type y, e or n.")
 
 
-def describe_step(node: str, changes: dict) -> str:
-    if node == "supervisor":
-        return f"intent = {changes.get('intent', '?')}"
-    if node == "rag_agent":
-        return f"retrieved {len(changes.get('retrieved_docs') or [])} chunks and answered"
-    if node == "direct_responder":
-        return "replied"
-    if node == "action_planner":
-        action = changes.get("pending_action")
-        return f"prepared {action['tool_name']}" if action else "needs more details"
-    if node == "tool_executor":
-        return "finished"
-    return "done"
-
-
 def stream_graph(graph, payload, config) -> bool:
-    """Run the graph, printing steps and answer tokens as they arrive.
-
-    Returns True if an answer was streamed token by token."""
-    started = time.perf_counter()
+    """Print steps and answer tokens as they arrive. True if an answer was streamed."""
     answering = False
     streamed = False
-    for mode, data in graph.stream(payload, config, stream_mode=["updates", "messages"]):
-        if mode == "messages":
-            chunk, metadata = data
-            text = str(chunk.content)
-            if "answer" not in (metadata.get("tags") or []) or not text:
-                continue
+    for event in stream_events(graph, payload, config):
+        if event["type"] == "token":
             if not answering:
                 print("\nAgent: ", end="", flush=True)
                 answering = streamed = True
-            print(text, end="", flush=True)
-            continue
-
-        if answering:
-            print()
-            answering = False
-        for node, changes in data.items():
-            if node.startswith("__") or not isinstance(changes, dict):
-                continue
-            now = time.perf_counter()
-            print(f"  [{node}] {describe_step(node, changes)} ({now - started:.1f}s)")
-            started = now
+            print(event["text"], end="", flush=True)
+        elif event["type"] == "step":
+            if answering:
+                print()
+                answering = False
+            print(f"  [{event['node']}] {event['summary']} ({event['seconds']:.1f}s)")
+    if answering:
+        print()
     return streamed
+
 
 def resume_with_review(graph, config) -> None:
     snapshot = graph.get_state(config)

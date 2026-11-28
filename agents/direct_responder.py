@@ -12,7 +12,7 @@ Never invent company policies, SLA numbers or procedures. If the user asks for I
 
 def direct_responder_node(state: AgentChatState) -> dict:
     history = state["messages"][-HISTORY_WINDOW:]
-    reply = get_llm(temperature=0.3).invoke(
+    reply = get_llm(temperature=0.3, tags=["answer"]).invoke(
         [SystemMessage(content=DIRECT_PROMPT), *history]
     )
     return {"messages": [AIMessage(content=str(reply.content))]}

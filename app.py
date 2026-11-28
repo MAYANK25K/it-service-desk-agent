@@ -83,15 +83,35 @@ def describe_step(node: str, changes: dict) -> str:
     return "done"
 
 
-def stream_graph(graph, payload, config) -> None:
+def stream_graph(graph, payload, config) -> bool:
+    """Run the graph, printing steps and answer tokens as they arrive.
+
+    Returns True if an answer was streamed token by token."""
     started = time.perf_counter()
-    for update in graph.stream(payload, config, stream_mode="updates"):
-        for node, changes in update.items():
+    answering = False
+    streamed = False
+    for mode, data in graph.stream(payload, config, stream_mode=["updates", "messages"]):
+        if mode == "messages":
+            chunk, metadata = data
+            text = str(chunk.content)
+            if "answer" not in (metadata.get("tags") or []) or not text:
+                continue
+            if not answering:
+                print("\nAgent: ", end="", flush=True)
+                answering = streamed = True
+            print(text, end="", flush=True)
+            continue
+
+        if answering:
+            print()
+            answering = False
+        for node, changes in data.items():
             if node.startswith("__") or not isinstance(changes, dict):
                 continue
             now = time.perf_counter()
             print(f"  [{node}] {describe_step(node, changes)} ({now - started:.1f}s)")
             started = now
+    return streamed
 
 def resume_with_review(graph, config) -> None:
     snapshot = graph.get_state(config)
@@ -111,8 +131,9 @@ def is_waiting_for_approval(graph, config) -> bool:
 
 def run_turn(graph, config, text: str) -> None:
     print()
-    stream_graph(graph, {"messages": [HumanMessage(content=text)]}, config)
-    print(f"\nAgent: {last_reply(graph, config)}")
+    streamed = stream_graph(graph, {"messages": [HumanMessage(content=text)]}, config)
+    if not streamed:
+        print(f"\nAgent: {last_reply(graph, config)}")
     if is_waiting_for_approval(graph, config):
         resume_with_review(graph, config)
 

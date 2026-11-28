@@ -36,7 +36,7 @@ def generate_answer(question: str, docs: list[dict], history: list[AnyMessage]) 
             content=f"Knowledge base passages:\n\n{format_context(docs)}\n\nQuestion: {question}"
         )
     )
-    return str(get_llm().invoke(prompt).content)
+    return str(get_llm(tags=["answer"]).invoke(prompt).content)
 
 
 def rag_agent_node(state: AgentChatState) -> dict:

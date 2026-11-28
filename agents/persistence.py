@@ -13,11 +13,12 @@ def open_checkpointer(path=None) -> SqliteSaver:
 
 
 def list_threads(checkpointer, graph, limit: int = 20) -> list[dict]:
-    rows = checkpointer.conn.execute(
-        "SELECT thread_id FROM checkpoints "
-        "GROUP BY thread_id ORDER BY MAX(checkpoint_id) DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
+    with checkpointer.lock:
+        rows = checkpointer.conn.execute(
+            "SELECT thread_id FROM checkpoints "
+            "GROUP BY thread_id ORDER BY MAX(checkpoint_id) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
 
     threads = []
     for (thread_id,) in rows:
@@ -30,6 +31,7 @@ def list_threads(checkpointer, graph, limit: int = 20) -> list[dict]:
                 "title": title if len(title) <= 60 else title[:57] + "...",
                 "messages": len(messages),
                 "awaiting_approval": "tool_executor" in state.next,
+                "updated_at": state.created_at,
             }
         )
     return threads

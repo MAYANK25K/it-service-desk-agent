@@ -9,3 +9,6 @@ langgraph-checkpoint-sqlite
 chromadb
 pydantic
 python-dotenv
+fastapi
+uvicorn
+httpx
